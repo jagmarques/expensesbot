@@ -1,0 +1,85 @@
+{
+  "version": "1",
+  "id": "expensesbot",
+  "name": "ExpensesBot",
+  "description": "Telegram expense tracker with receipt OCR, AI assistant, and analytics",
+  "website": "https://github.com",
+  "documentation": "https://github.com",
+  "logo": "https://telegram.org/img/t_logo.png",
+  "source": {
+    "type": "docker",
+    "dockerfile": "Dockerfile"
+  },
+  "services": [
+    {
+      "type": "application",
+      "name": "expensesbot",
+      "image": "expensesbot:latest",
+      "ports": [
+        {
+          "published": 80,
+          "target": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "label": "Node Environment",
+          "value": "production",
+          "description": "Set to production for deployed instance"
+        },
+        {
+          "name": "TELEGRAM_BOT_TOKEN",
+          "label": "Telegram Bot Token",
+          "value": "",
+          "description": "Get from @BotFather on Telegram"
+        },
+        {
+          "name": "GEMINI_API_KEY",
+          "label": "Google Gemini API Key",
+          "value": "",
+          "description": "Get from Google AI Studio (https://aistudio.google.com)"
+        },
+        {
+          "name": "PORT",
+          "label": "Port",
+          "value": "8080",
+          "description": "Port for health check endpoint"
+        },
+        {
+          "name": "DB_PATH",
+          "label": "Database Path",
+          "value": "/data/expenses.db",
+          "description": "Path to SQLite database"
+        }
+      ],
+      "volumes": [
+        {
+          "source": "data",
+          "target": "/data",
+          "type": "volume"
+        }
+      ],
+      "healthCheck": {
+        "test": "curl -f http://localhost:8080/health || exit 1",
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 5
+      },
+      "restart_policy": "unless-stopped"
+    }
+  ],
+  "volumes": [
+    {
+      "name": "data",
+      "driver": "local"
+    }
+  ],
+  "ssl": {
+    "enabled": true,
+    "provider": "letsencrypt",
+    "auto_renew": true
+  }
+}

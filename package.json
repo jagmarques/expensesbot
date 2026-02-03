@@ -1,0 +1,47 @@
+{
+  "name": "expensesbot",
+  "version": "1.0.0",
+  "description": "Telegram expense tracker with receipt OCR, AI assistant, and analytics",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest",
+    "lint": "eslint src",
+    "format": "prettier --write src"
+  },
+  "keywords": [
+    "telegram",
+    "expense",
+    "tracker",
+    "ocr"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.11.5",
+    "axios": "^1.6.2",
+    "better-sqlite3": "^9.2.2",
+    "chart.js": "^4.4.1",
+    "dotenv": "^16.3.1",
+    "grammy": "^1.25.0",
+    "papaparse": "^5.4.1",
+    "pdfkit": "^0.13.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.10.6",
+    "@types/papaparse": "^5.3.14",
+    "@types/pdfkit": "^0.17.4",
+    "@typescript-eslint/eslint-plugin": "^6.17.0",
+    "@typescript-eslint/parser": "^6.17.0",
+    "@vitest/ui": "^1.1.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
+  }
+}
