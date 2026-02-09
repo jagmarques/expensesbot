@@ -1,5 +1,6 @@
 import { getDatabase } from '../database/db';
 import { MonthlyStats, CategoryStat, ItemStat } from '../../types/analytics';
+import { SYSTEM_CATEGORIES } from '../../config/constants';
 
 export function getMonthlyStats(userId: string, month: string): MonthlyStats {
   const db = getDatabase();
@@ -123,4 +124,99 @@ function getPreviousMonth(month: string): string {
   }
 
   return `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+}
+
+interface CategoryWithReceipts {
+  name: string;
+  icon: string;
+  total: bigint;
+  receipts: Map<string, { storeName: string; date: string; items: { name: string; amount: bigint; quantity: number }[]; total: bigint }>;
+}
+
+export function getCategoriesWithReceipts(userId: string, month: string): CategoryWithReceipts[] {
+  const db = getDatabase();
+
+  const itemsStmt = db.prepare(`
+    SELECT
+      i.item_name,
+      i.total_price,
+      i.quantity,
+      i.expense_id,
+      i.created_at,
+      COALESCE(c.name, 'Other') as category_name,
+      COALESCE(e.store_name, 'Manual') as store_name
+    FROM items i
+    LEFT JOIN categories c ON i.category_id = c.id
+    LEFT JOIN expenses e ON i.expense_id = e.id
+    WHERE i.user_id = ? AND strftime('%Y-%m', i.created_at) = ?
+    ORDER BY c.name, i.created_at DESC
+  `);
+  const items = itemsStmt.all(userId, month) as any[];
+
+  const categoryMap = new Map<string, CategoryWithReceipts>();
+
+  for (const item of items) {
+    const catName = item.category_name;
+    const expenseId = item.expense_id || `manual_${item.created_at}`;
+
+    if (!categoryMap.has(catName)) {
+      const systemCat = SYSTEM_CATEGORIES.find(c => c.name === catName);
+      categoryMap.set(catName, {
+        name: catName,
+        icon: systemCat?.icon || '📦',
+        total: 0n,
+        receipts: new Map(),
+      });
+    }
+
+    const category = categoryMap.get(catName)!;
+    const itemAmount = BigInt(item.total_price);
+    category.total += itemAmount;
+
+    if (!category.receipts.has(expenseId)) {
+      category.receipts.set(expenseId, {
+        storeName: item.store_name,
+        date: new Date(item.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+        items: [],
+        total: 0n,
+      });
+    }
+
+    const receipt = category.receipts.get(expenseId)!;
+    receipt.items.push({
+      name: item.item_name,
+      amount: itemAmount,
+      quantity: item.quantity,
+    });
+    receipt.total += itemAmount;
+  }
+
+  return Array.from(categoryMap.values()).sort((a, b) => Number(b.total - a.total));
+}
+
+export function generateCategoryReceiptReport(categories: CategoryWithReceipts[]): string {
+  if (categories.length === 0) {
+    return 'No purchases this month yet.';
+  }
+
+  let report = 'Your Purchases\n\n';
+  let grandTotal = 0n;
+
+  for (const category of categories) {
+    report += `${category.icon} ${category.name} (${formatAmount(category.total)})\n`;
+
+    for (const receipt of category.receipts.values()) {
+      report += `  ${receipt.storeName} - ${receipt.date} (${formatAmount(receipt.total)})\n`;
+      for (const item of receipt.items) {
+        const qty = item.quantity > 1 ? ` x${item.quantity}` : '';
+        report += `    - ${item.name}${qty}: ${formatAmount(item.amount)}\n`;
+      }
+    }
+    report += '\n';
+    grandTotal += category.total;
+  }
+
+  report += `Total: ${formatAmount(grandTotal)}`;
+
+  return report;
 }

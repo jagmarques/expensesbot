@@ -1,4 +1,5 @@
 import { getDatabase } from '../database/db';
+import cityTimezones from 'city-timezones';
 
 export interface TimezoneInfo {
   name: string;
@@ -7,124 +8,118 @@ export interface TimezoneInfo {
 }
 
 /**
- * Detect timezone from user-provided time (HH:MM)
- * Calculates UTC offset and finds matching IANA timezone
+ * Get current UTC offset for a timezone (handles DST)
  */
-export function detectTimezoneFromTime(userTime: string): TimezoneInfo | null {
-  const match = userTime.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-
-  const userHour = parseInt(match[1]);
-  const userMinute = parseInt(match[2]);
-
-  if (userHour < 0 || userHour > 23 || userMinute < 0 || userMinute > 59) {
-    return null;
+function getTimezoneOffset(timezoneName: string): number {
+  try {
+    const now = new Date();
+    const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const tzDate = new Date(now.toLocaleString('en-US', { timeZone: timezoneName }));
+    return (tzDate.getTime() - utcDate.getTime()) / (1000 * 60 * 60);
+  } catch {
+    return 0;
   }
-
-  // Get current UTC time
-  const now = new Date();
-  const utcHour = now.getUTCHours();
-  const utcMinute = now.getUTCMinutes();
-
-  // Calculate offset in minutes
-  let offsetMinutes = userHour * 60 + userMinute - (utcHour * 60 + utcMinute);
-
-  // Adjust for day boundary
-  if (offsetMinutes > 12 * 60) {
-    offsetMinutes -= 24 * 60;
-  } else if (offsetMinutes < -12 * 60) {
-    offsetMinutes += 24 * 60;
-  }
-
-  // Find matching timezone
-  const tzInfo = findTimezoneByOffset(offsetMinutes);
-  return tzInfo;
 }
 
 /**
- * Find IANA timezone by UTC offset
- * Prefers common timezones
+ * Get timezone abbreviation
  */
-function findTimezoneByOffset(offsetMinutes: number): TimezoneInfo | null {
-  const timezones: TimezoneInfo[] = [
-    { name: 'Etc/GMT+12', offset: -12, abbreviation: 'IDLW' },
-    { name: 'Pacific/Pago_Pago', offset: -11, abbreviation: 'SST' },
-    { name: 'Pacific/Honolulu', offset: -10, abbreviation: 'HST' },
-    { name: 'America/Anchorage', offset: -9, abbreviation: 'AKST' },
-    { name: 'America/Los_Angeles', offset: -8, abbreviation: 'PST' },
-    { name: 'America/Denver', offset: -7, abbreviation: 'MST' },
-    { name: 'America/Chicago', offset: -6, abbreviation: 'CST' },
-    { name: 'America/New_York', offset: -5, abbreviation: 'EST' },
-    { name: 'America/Toronto', offset: -4, abbreviation: 'EDT' },
-    { name: 'Canada/Newfoundland', offset: -3.5, abbreviation: 'NDT' },
-    { name: 'America/Sao_Paulo', offset: -3, abbreviation: 'BRT' },
-    { name: 'Atlantic/South_Georgia', offset: -2, abbreviation: 'GST' },
-    { name: 'Atlantic/Azores', offset: -1, abbreviation: 'AZOT' },
-    { name: 'UTC', offset: 0, abbreviation: 'UTC' },
-    { name: 'Europe/London', offset: 1, abbreviation: 'GMT' },
-    { name: 'Europe/Paris', offset: 2, abbreviation: 'CEST' },
-    { name: 'Europe/Moscow', offset: 3, abbreviation: 'MSK' },
-    { name: 'Asia/Dubai', offset: 4, abbreviation: 'GST' },
-    { name: 'Asia/Karachi', offset: 5, abbreviation: 'PKT' },
-    { name: 'Asia/Kolkata', offset: 5.5, abbreviation: 'IST' },
-    { name: 'Asia/Dhaka', offset: 6, abbreviation: 'BDT' },
-    { name: 'Asia/Bangkok', offset: 7, abbreviation: 'ICT' },
-    { name: 'Asia/Shanghai', offset: 8, abbreviation: 'CST' },
-    { name: 'Asia/Tokyo', offset: 9, abbreviation: 'JST' },
-    { name: 'Australia/Sydney', offset: 10, abbreviation: 'AEST' },
-    { name: 'Pacific/Guadalcanal', offset: 11, abbreviation: 'SBT' },
-    { name: 'Pacific/Fiji', offset: 12, abbreviation: 'FJT' },
-  ];
-
-  const hours = offsetMinutes / 60;
-  const match = timezones.find((tz) => tz.offset === hours);
-  return match || null;
+function getTimezoneAbbreviation(timezoneName: string): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezoneName,
+      timeZoneName: 'short',
+    });
+    const parts = formatter.formatToParts(new Date());
+    const tzPart = parts.find((p) => p.type === 'timeZoneName');
+    return tzPart?.value || 'UTC';
+  } catch {
+    return 'UTC';
+  }
 }
 
 /**
- * Parse timezone name or offset from user input
+ * Find timezone by UTC offset (hours)
+ */
+function findTimezoneByOffset(offsetHours: number): TimezoneInfo {
+  const rounded = Math.round(offsetHours);
+  // Etc/GMT signs are inverted (Etc/GMT-5 = UTC+5)
+  const etcOffset = -rounded;
+  const tzName = rounded === 0 ? 'UTC' : `Etc/GMT${etcOffset > 0 ? '+' : ''}${etcOffset}`;
+
+  return {
+    name: tzName,
+    offset: rounded,
+    abbreviation: `UTC${rounded >= 0 ? '+' : ''}${rounded}`,
+  };
+}
+
+/**
+ * Parse timezone from city name using city-timezones library
+ */
+function findTimezoneByCity(cityName: string): TimezoneInfo | null {
+  const results = cityTimezones.lookupViaCity(cityName);
+
+  if (results && results.length > 0) {
+    const city = results[0];
+    const timezoneName = city.timezone;
+    const offset = getTimezoneOffset(timezoneName);
+    const abbreviation = getTimezoneAbbreviation(timezoneName);
+
+    return {
+      name: timezoneName,
+      offset,
+      abbreviation,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Parse timezone from user input
+ * Supports: city name, offset (+5, -8), or time (14:30)
  */
 export function parseTimezone(input: string): TimezoneInfo | null {
-  // Try parsing as time (HH:MM)
-  if (input.includes(':')) {
-    return detectTimezoneFromTime(input);
+  const trimmed = input.trim();
+
+  // Handle UTC special case
+  if (trimmed.toLowerCase() === 'utc') {
+    return { name: 'UTC', offset: 0, abbreviation: 'UTC' };
   }
 
   // Try parsing as offset (+5, -8, etc)
-  const offsetMatch = input.match(/^([+-]?)(\d+)$/);
+  const offsetMatch = trimmed.match(/^([+-]?)(\d+)$/);
   if (offsetMatch) {
     const offset = parseInt(offsetMatch[0]);
-    return findTimezoneByOffset(offset * 60);
+    return findTimezoneByOffset(offset);
   }
 
-  // Try parsing as timezone name (Europe/London, UTC+1, etc)
-  const commonNames: Record<string, TimezoneInfo> = {
-    'UTC': { name: 'UTC', offset: 0, abbreviation: 'UTC' },
-    'London': { name: 'Europe/London', offset: 0, abbreviation: 'GMT' },
-    'Paris': { name: 'Europe/Paris', offset: 1, abbreviation: 'CET' },
-    'Tokyo': { name: 'Asia/Tokyo', offset: 9, abbreviation: 'JST' },
-    'Sydney': { name: 'Australia/Sydney', offset: 10, abbreviation: 'AEST' },
-    'NewYork': { name: 'America/New_York', offset: -5, abbreviation: 'EST' },
-    'LosAngeles': { name: 'America/Los_Angeles', offset: -8, abbreviation: 'PST' },
-  };
+  // Try parsing as time (HH:MM) - calculate offset from current UTC
+  if (trimmed.includes(':')) {
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+      const userHour = parseInt(match[1]);
+      const userMinute = parseInt(match[2]);
 
-  return commonNames[input] || null;
-}
+      if (userHour >= 0 && userHour <= 23 && userMinute >= 0 && userMinute <= 59) {
+        const now = new Date();
+        const utcHour = now.getUTCHours();
+        const utcMinute = now.getUTCMinutes();
 
-/**
- * Format time with user's timezone offset
- */
-export function formatTimeWithOffset(date: Date, offsetHours: number): string {
-  const utcDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
-  const localDate = new Date(utcDate.getTime() + offsetHours * 3600000);
+        let offsetMinutes = userHour * 60 + userMinute - (utcHour * 60 + utcMinute);
 
-  const year = localDate.getFullYear();
-  const month = String(localDate.getMonth() + 1).padStart(2, '0');
-  const day = String(localDate.getDate()).padStart(2, '0');
-  const hours = String(localDate.getHours()).padStart(2, '0');
-  const minutes = String(localDate.getMinutes()).padStart(2, '0');
+        if (offsetMinutes > 12 * 60) offsetMinutes -= 24 * 60;
+        if (offsetMinutes < -12 * 60) offsetMinutes += 24 * 60;
 
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
+        return findTimezoneByOffset(offsetMinutes / 60);
+      }
+    }
+    return null;
+  }
+
+  // Try finding city using city-timezones library
+  return findTimezoneByCity(trimmed);
 }
 
 /**
@@ -135,12 +130,13 @@ export function getUserTimezoneOffset(userId: string): number {
   const stmt = db.prepare('SELECT timezone FROM user_settings WHERE user_id = ?');
   const user = stmt.get(userId) as any;
 
-  if (!user || !user.timezone) return 0; // Default to UTC
+  if (!user || !user.timezone) return 0;
 
-  // Parse timezone string (e.g., "UTC+1" or "UTC-5")
-  const match = user.timezone.match(/^UTC([+-]?\d+(?:\.\d+)?)$/);
-  if (match) {
-    return parseFloat(match[1]);
+  try {
+    return getTimezoneOffset(user.timezone);
+  } catch {
+    const match = user.timezone.match(/^UTC([+-]?\d+(?:\.\d+)?)$/);
+    if (match) return parseFloat(match[1]);
   }
 
   return 0;

@@ -21,7 +21,7 @@ export async function handleExport(request: ExportRequest): Promise<ExportResult
         data: csvContent,
       };
     } else if (format === 'pdf') {
-      const pdfBuffer = exportToPDF(userId, startDate, endDate);
+      const pdfBuffer = await exportToPDF(userId, startDate, endDate);
       const fileName = `expenses_report_${new Date().toISOString().split('T')[0]}.pdf`;
 
       return {

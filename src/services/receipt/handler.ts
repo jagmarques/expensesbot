@@ -3,14 +3,17 @@ import path from 'path';
 import { getDatabase } from '../database/db';
 import { getUserTimezoneOffset } from '../timezone/detector';
 import { ReceiptItem } from './vision';
+import { generateId } from '../../utils/id';
+import { categorizeItems } from '../ai/categorizer';
 
 /**
- * Save receipt data to database
+ * Save receipt data to database with AI categorization
  */
 export async function saveReceiptExpense(
   userId: string,
   items: ReceiptItem[],
-  totalAmount: bigint
+  totalAmount: bigint,
+  storeName: string = 'Store'
 ): Promise<boolean> {
   try {
     const db = getDatabase();
@@ -22,26 +25,24 @@ export async function saveReceiptExpense(
     const userDate = new Date(utcDate.getTime() + tzOffset * 3600000);
     const dateStr = userDate.toISOString().split('T')[0];
 
-    // Create expense record
+    // AI categorization
+    const itemNames = items.map(i => i.name);
+    const categories = await categorizeItems(itemNames);
+    console.log('[ReceiptHandler] AI categorized items:', categories.length, 'Store:', storeName);
+
+    // Create expense record (source = receipt)
+    const expenseId = generateId();
     const expenseStmt = db.prepare(`
-      INSERT INTO expenses (user_id, total_amount, purchase_date, created_at)
-      VALUES (?, ?, ?, datetime('now'))
+      INSERT INTO expenses (id, user_id, total_amount, purchase_date, source, store_name, created_at)
+      VALUES (?, ?, ?, ?, 'receipt', ?, datetime('now'))
     `);
 
-    const expenseResult = expenseStmt.run(userId, totalAmount.toString(), dateStr) as any;
-    const expenseId = expenseResult.lastInsertRowid;
+    expenseStmt.run(expenseId, userId, totalAmount.toString(), dateStr, storeName);
 
-    // Get default category
-    let categoryId: number | null = null;
-    const categoryStmt = db.prepare('SELECT id FROM categories WHERE name = ?');
-    const category = categoryStmt.get('Shopping') as any;
-    if (category) {
-      categoryId = category.id;
-    }
-
-    // Insert items
+    // Insert items with AI categories
     const itemStmt = db.prepare(`
       INSERT INTO items (
+        id,
         expense_id,
         user_id,
         item_name,
@@ -51,13 +52,16 @@ export async function saveReceiptExpense(
         total_price,
         category_id,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `);
 
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const category = categories[i];
       const normalizedName = item.name.toLowerCase().trim();
 
       itemStmt.run(
+        generateId(),
         expenseId,
         userId,
         item.name,
@@ -65,7 +69,7 @@ export async function saveReceiptExpense(
         item.quantity,
         item.amount.toString(),
         item.amount.toString(),
-        categoryId || null
+        category.categoryId
       );
     }
 

@@ -1,172 +1,234 @@
 import PDFDocument from 'pdfkit';
 import { getDatabase } from '../database/db';
 
-export function exportToPDF(userId: string, startDate?: string, endDate?: string): Buffer {
+export async function exportToPDF(userId: string, startDate?: string, endDate?: string): Promise<Buffer> {
   const db = getDatabase();
 
-  const doc = new PDFDocument();
-  const buffers: Buffer[] = [];
-
-  doc.on('data', (chunk) => buffers.push(chunk));
-
-  // Determine date range label
-  let dateLabel = 'All Time';
-  if (startDate && endDate) {
-    dateLabel = `${startDate} to ${endDate}`;
-  } else if (startDate) {
-    dateLabel = `From ${startDate}`;
-  } else if (endDate) {
-    dateLabel = `Until ${endDate}`;
-  }
-
-  // Header
-  doc.fontSize(20).font('Helvetica-Bold').text('Expense Report', { align: 'center' });
-  doc.fontSize(12).font('Helvetica').text(dateLabel, { align: 'center' });
-  doc.moveDown();
-
-  // Summary stats
-  let query = `
-    SELECT COUNT(*) as count, SUM(i.total_price) as total
-    FROM items i
-    JOIN expenses e ON i.expense_id = e.id
-    WHERE e.user_id = ?
-  `;
-  const params: any[] = [userId];
-
-  if (startDate) {
-    query += ` AND e.purchase_date >= ?`;
-    params.push(startDate);
-  }
-  if (endDate) {
-    query += ` AND e.purchase_date <= ?`;
-    params.push(endDate);
-  }
-
-  const summaryStmt = db.prepare(query);
-  const summary = summaryStmt.get(...params) as any;
-
-  const totalAmount = Number(summary.total || 0) / 100;
-  const itemCount = summary.count || 0;
-
-  doc.fontSize(11).font('Helvetica-Bold').text('Summary', { underline: true });
-  doc.fontSize(10).font('Helvetica');
-  doc.text(`Total Items: ${itemCount}`);
-  doc.text(`Total Spent: €${totalAmount.toFixed(2)}`);
-  doc.moveDown();
-
-  // Category breakdown
-  let categoryQuery = `
-    SELECT c.name, COUNT(*) as count, SUM(i.total_price) as total
-    FROM items i
-    JOIN expenses e ON i.expense_id = e.id
-    LEFT JOIN categories c ON i.category_id = c.id
-    WHERE e.user_id = ?
-  `;
-  const categoryParams: any[] = [userId];
-
-  if (startDate) {
-    categoryQuery += ` AND e.purchase_date >= ?`;
-    categoryParams.push(startDate);
-  }
-  if (endDate) {
-    categoryQuery += ` AND e.purchase_date <= ?`;
-    categoryParams.push(endDate);
-  }
-
-  categoryQuery += ` GROUP BY c.name ORDER BY total DESC`;
-
-  const categoryStmt = db.prepare(categoryQuery);
-  const categories = categoryStmt.all(...categoryParams) as any[];
-
-  if (categories.length > 0) {
-    doc.fontSize(11).font('Helvetica-Bold').text('By Category', { underline: true });
-    doc.fontSize(10).font('Helvetica');
-
-    for (const cat of categories) {
-      const catAmount = Number(cat.total || 0) / 100;
-      const percentage = totalAmount > 0 ? ((catAmount / totalAmount) * 100).toFixed(1) : '0.0';
-      doc.text(`${cat.name}: €${catAmount.toFixed(2)} (${percentage}%)`);
-    }
-    doc.moveDown();
-  }
-
-  // Detailed transaction table
-  let transQuery = `
-    SELECT
-      e.purchase_date as date,
-      e.store_name as store,
-      i.item_name as item,
-      i.total_price as price,
-      c.name as category
-    FROM expenses e
-    JOIN items i ON e.id = i.expense_id
-    LEFT JOIN categories c ON i.category_id = c.id
-    WHERE e.user_id = ?
-  `;
-  const transParams: any[] = [userId];
-
-  if (startDate) {
-    transQuery += ` AND e.purchase_date >= ?`;
-    transParams.push(startDate);
-  }
-  if (endDate) {
-    transQuery += ` AND e.purchase_date <= ?`;
-    transParams.push(endDate);
-  }
-
-  transQuery += ` ORDER BY e.purchase_date DESC LIMIT 50`;
-
-  const transStmt = db.prepare(transQuery);
-  const transactions = transStmt.all(...transParams) as any[];
-
-  if (transactions.length > 0) {
-    doc.fontSize(11).font('Helvetica-Bold').text('Recent Transactions', { underline: true });
-    doc.fontSize(9).font('Helvetica');
-
-    const table = transactions.map((t) => {
-      const price = Number(t.price || 0) / 100;
-      return [t.date || '', t.store || '', t.item || '', `€${price.toFixed(2)}`, t.category || 'Other'];
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: 'A4',
+      margins: { top: 50, bottom: 50, left: 50, right: 50 }
     });
+    const buffers: Buffer[] = [];
 
-    // Simple table rendering
-    const headers = ['Date', 'Store', 'Item', 'Price', 'Category'];
-    const y = doc.y;
-    let currentY = y;
+    doc.on('data', (chunk) => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
 
-    // Header row
-    const colWidths = [80, 70, 100, 60, 100];
-    let xPos = 50;
-
-    doc.font('Helvetica-Bold').fontSize(9);
-    for (let i = 0; i < headers.length; i++) {
-      doc.text(headers[i], xPos, currentY, { width: colWidths[i], align: 'left' });
-      xPos += colWidths[i];
+    // Determine date range label
+    let dateLabel = 'All Time';
+    if (startDate && endDate) {
+      dateLabel = `${formatDate(startDate)} - ${formatDate(endDate)}`;
+    } else if (startDate) {
+      dateLabel = `From ${formatDate(startDate)}`;
+    } else if (endDate) {
+      dateLabel = `Until ${formatDate(endDate)}`;
     }
 
-    currentY += 20;
-    doc.font('Helvetica').fontSize(8);
+    // Header
+    doc.fontSize(24).font('Helvetica-Bold').text('Expense Report', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(11).font('Helvetica').text(dateLabel, { align: 'center' });
+    doc.moveDown(0.5);
 
-    // Data rows
-    for (const row of table) {
-      if (currentY > 750) {
-        doc.addPage();
-        currentY = 50;
+    // Divider line
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+    doc.moveDown();
+
+    // Summary stats
+    let query = `
+      SELECT COUNT(*) as count, SUM(i.total_price) as total
+      FROM items i
+      WHERE i.user_id = ?
+    `;
+    const params: any[] = [userId];
+
+    if (startDate) {
+      query += ` AND date(i.created_at) >= ?`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ` AND date(i.created_at) <= ?`;
+      params.push(endDate);
+    }
+
+    const summaryStmt = db.prepare(query);
+    const summary = summaryStmt.get(...params) as any;
+
+    const totalAmount = Number(summary.total || 0) / 100;
+    const itemCount = summary.count || 0;
+    const average = itemCount > 0 ? totalAmount / itemCount : 0;
+
+    // Summary section
+    doc.fontSize(14).font('Helvetica-Bold').text('Summary');
+    doc.moveDown(0.5);
+    doc.fontSize(10).font('Helvetica');
+    doc.text(`Total Spent: ${formatEuro(totalAmount)}`);
+    doc.text(`Total Items: ${itemCount}`);
+    doc.text(`Average per Item: ${formatEuro(average)}`);
+    doc.moveDown();
+
+    // Category breakdown
+    let categoryQuery = `
+      SELECT COALESCE(c.name, 'Other') as name, COUNT(*) as count, SUM(i.total_price) as total
+      FROM items i
+      LEFT JOIN categories c ON i.category_id = c.id
+      WHERE i.user_id = ?
+    `;
+    const categoryParams: any[] = [userId];
+
+    if (startDate) {
+      categoryQuery += ` AND date(i.created_at) >= ?`;
+      categoryParams.push(startDate);
+    }
+    if (endDate) {
+      categoryQuery += ` AND date(i.created_at) <= ?`;
+      categoryParams.push(endDate);
+    }
+
+    categoryQuery += ` GROUP BY c.name ORDER BY total DESC`;
+
+    const categoryStmt = db.prepare(categoryQuery);
+    const categories = categoryStmt.all(...categoryParams) as any[];
+
+    if (categories.length > 0) {
+      doc.fontSize(14).font('Helvetica-Bold').text('Spending by Category');
+      doc.moveDown(0.5);
+      doc.fontSize(10).font('Helvetica');
+
+      for (const cat of categories) {
+        const catAmount = Number(cat.total || 0) / 100;
+        const percentage = totalAmount > 0 ? ((catAmount / totalAmount) * 100).toFixed(1) : '0.0';
+        doc.text(`${cat.name || 'Uncategorized'}: ${formatEuro(catAmount)} (${percentage}%)`);
       }
+      doc.moveDown();
+    }
 
-      xPos = 50;
-      for (let i = 0; i < row.length; i++) {
-        doc.text(row[i].toString().substring(0, 15), xPos, currentY, { width: colWidths[i], align: 'left' });
+    // Detailed transaction table
+    let transQuery = `
+      SELECT
+        date(i.created_at) as date,
+        COALESCE(e.store_name, 'Manual') as store,
+        i.item_name as item,
+        i.total_price as price,
+        COALESCE(c.name, 'Other') as category
+      FROM items i
+      LEFT JOIN expenses e ON i.expense_id = e.id
+      LEFT JOIN categories c ON i.category_id = c.id
+      WHERE i.user_id = ?
+    `;
+    const transParams: any[] = [userId];
+
+    if (startDate) {
+      transQuery += ` AND date(i.created_at) >= ?`;
+      transParams.push(startDate);
+    }
+    if (endDate) {
+      transQuery += ` AND date(i.created_at) <= ?`;
+      transParams.push(endDate);
+    }
+
+    transQuery += ` ORDER BY i.created_at DESC LIMIT 50`;
+
+    const transStmt = db.prepare(transQuery);
+    const transactions = transStmt.all(...transParams) as any[];
+
+    if (transactions.length > 0) {
+      doc.fontSize(14).font('Helvetica-Bold').text('Recent Transactions');
+      doc.moveDown(0.5);
+
+      // Table header
+      const headers = ['Date', 'Store', 'Item', 'Amount', 'Category'];
+      const colWidths = [70, 90, 140, 70, 90];
+      const tableStartX = 50;
+      const rowHeight = 18;
+      let currentY = doc.y;
+
+      // Draw header row
+      doc.fontSize(9).font('Helvetica-Bold');
+      let xPos = tableStartX;
+      for (let i = 0; i < headers.length; i++) {
+        doc.text(headers[i], xPos, currentY, { width: colWidths[i] });
         xPos += colWidths[i];
       }
-      currentY += 15;
+
+      // Header underline
+      currentY += rowHeight;
+      doc.moveTo(tableStartX, currentY - 4).lineTo(tableStartX + 460, currentY - 4).stroke();
+
+      // Data rows
+      doc.fontSize(8).font('Helvetica');
+
+      for (const t of transactions) {
+        // Check for page break
+        if (currentY > 750) {
+          doc.addPage();
+          currentY = 50;
+
+          // Repeat header on new page
+          doc.fontSize(9).font('Helvetica-Bold');
+          xPos = tableStartX;
+          for (let i = 0; i < headers.length; i++) {
+            doc.text(headers[i], xPos, currentY, { width: colWidths[i] });
+            xPos += colWidths[i];
+          }
+          currentY += rowHeight;
+          doc.moveTo(tableStartX, currentY - 4).lineTo(tableStartX + 460, currentY - 4).stroke();
+          doc.fontSize(8).font('Helvetica');
+        }
+
+        const price = Number(t.price || 0) / 100;
+        const row = [
+          formatDate(t.date) || '-',
+          truncate(t.store || '-', 16),
+          truncate(t.item || '-', 24),
+          formatEuro(price),
+          truncate(t.category || 'Other', 14)
+        ];
+
+        xPos = tableStartX;
+        for (let i = 0; i < row.length; i++) {
+          doc.text(row[i], xPos, currentY, { width: colWidths[i] });
+          xPos += colWidths[i];
+        }
+        currentY += rowHeight;
+      }
     }
+
+    // Footer
+    doc.moveDown(2);
+    doc.fontSize(8).font('Helvetica').text(
+      `Generated on ${formatDate(new Date().toISOString().split('T')[0])}`,
+      { align: 'center' }
+    );
+
+    doc.end();
+  });
+}
+
+function formatEuro(amount: number): string {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2
+  }).format(amount);
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '-';
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch {
+    return dateStr;
   }
+}
 
-  // Footer
-  doc.moveDown();
-  doc.fontSize(8).font('Helvetica').text(`Generated on ${new Date().toISOString().split('T')[0]}`, { align: 'center' });
-
-  doc.end();
-
-  return Buffer.concat(buffers);
+function truncate(str: string, maxLen: number): string {
+  if (!str) return '-';
+  return str.length > maxLen ? str.substring(0, maxLen - 1) + '...' : str;
 }

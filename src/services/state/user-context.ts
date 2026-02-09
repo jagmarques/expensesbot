@@ -9,6 +9,7 @@ export enum UserState {
   WAITING_RECURRING_FREQUENCY = 'waiting_recurring_frequency',
   WAITING_TIMEZONE_INPUT = 'waiting_timezone_input',
   WAITING_AI_QUERY = 'waiting_ai_query',
+  WAITING_RECEIPT_UPLOAD = 'waiting_receipt_upload',
 }
 
 export interface UserContextData {
@@ -22,6 +23,21 @@ export interface UserContextData {
 // In-memory context storage (expires after 5 minutes)
 const contextMap = new Map<string, UserContextData>();
 const CONTEXT_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Track last menu message ID per user (for deletion when adding expenses)
+const lastMenuMap = new Map<string, { chatId: number; messageId: number }>();
+
+export function setLastMenuMessage(userId: string, chatId: number, messageId: number): void {
+  lastMenuMap.set(userId, { chatId, messageId });
+}
+
+export function getLastMenuMessage(userId: string): { chatId: number; messageId: number } | null {
+  return lastMenuMap.get(userId) || null;
+}
+
+export function clearLastMenuMessage(userId: string): void {
+  lastMenuMap.delete(userId);
+}
 
 /**
  * Get current user context

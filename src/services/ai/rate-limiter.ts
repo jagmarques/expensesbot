@@ -1,12 +1,13 @@
 import { RateLimitStatus } from '../../types/ai';
-import { GEMINI_DAILY_LIMIT } from '../../config/constants';
+
+const DEEPSEEK_DAILY_LIMIT = 14400;
 
 let dailyCount = 0;
 let resetDate = new Date().toISOString().split('T')[0];
 
 export function canMakeRequest(): boolean {
   checkAndResetIfNewDay();
-  return dailyCount < GEMINI_DAILY_LIMIT;
+  return dailyCount < DEEPSEEK_DAILY_LIMIT;
 }
 
 export function recordRequest(): void {
@@ -18,11 +19,11 @@ export function getRateLimitStatus(): RateLimitStatus {
   checkAndResetIfNewDay();
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  
+
   return {
     dailyUsed: dailyCount,
-    dailyLimit: GEMINI_DAILY_LIMIT,
-    isLimited: dailyCount >= GEMINI_DAILY_LIMIT,
+    dailyLimit: DEEPSEEK_DAILY_LIMIT,
+    isLimited: dailyCount >= DEEPSEEK_DAILY_LIMIT,
     resetsAt: tomorrow.toISOString().split('T')[0],
   };
 }

@@ -8,13 +8,36 @@ import { InlineKeyboard } from 'grammy';
 export function getMainMenuKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text('📊 Stats', 'stats')
-    .text('💰 Budget', 'budget')
+    .text('🧾 Receipts', 'receipts')
     .row()
     .text('🔄 Recurring', 'recurring')
     .text('📤 Export', 'export')
     .row()
     .text('🤖 Ask AI', 'ai')
-    .text('⚙️ Timezone', 'timezone');
+    .text('⚙️ Settings', 'settings');
+}
+
+export function getReceiptsMenuKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('📷 Upload New', 'receipt_upload')
+    .text('📋 Show Receipts', 'receipt_list')
+    .row()
+    .text('« Back', 'back_main');
+}
+
+export function getSettingsMenuKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('🕐 Timezone', 'timezone')
+    .row()
+    .text('🔄 Reset All Data', 'restart')
+    .row()
+    .text('« Back', 'back_main');
+}
+
+export function getConfirmResetKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('Yes, delete all', 'confirm_reset')
+    .text('No, cancel', 'back_main');
 }
 
 export function getBudgetMenuKeyboard(): InlineKeyboard {
@@ -57,4 +80,9 @@ export function getYesNoKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text('✓ Yes', 'yes')
     .text('✗ No', 'no');
+}
+
+export function getBackKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('« Back to Menu', 'back_main');
 }

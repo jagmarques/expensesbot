@@ -54,6 +54,7 @@ function createSchema(): void {
       total_amount INTEGER NOT NULL,
       currency TEXT DEFAULT 'EUR',
       purchase_date TEXT NOT NULL,
+      source TEXT DEFAULT 'manual',
       receipt_photo_id TEXT,
       ocr_confidence REAL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -153,6 +154,13 @@ function createSchema(): void {
   for (const stmt of statements) {
     db.exec(stmt);
   }
+
+  // Migrations for existing databases
+  try {
+    db.exec(`ALTER TABLE expenses ADD COLUMN source TEXT DEFAULT 'manual'`);
+  } catch {
+    // Column already exists
+  }
 }
 
 function seedDefaultCategories(): void {
@@ -186,5 +194,37 @@ function seedDefaultCategories(): void {
 export function closeDatabase(): void {
   if (db) {
     db.close();
+  }
+}
+
+export function resetUserData(userId: string): boolean {
+  try {
+    // Delete receipt_photos first (via expense_id join since it has no user_id)
+    db.prepare(`
+      DELETE FROM receipt_photos
+      WHERE expense_id IN (SELECT id FROM expenses WHERE user_id = ?)
+    `).run(userId);
+
+    // Tables with user_id column - delete in order (children before parents)
+    const tables = [
+      'items',
+      'expenses',
+      'price_history',
+      'budget_limits',
+      'recurring_expenses',
+      'user_patterns',
+      'user_context',
+      'user_settings',
+    ];
+
+    for (const table of tables) {
+      db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+    }
+
+    console.log(`[Database] Reset all data for user ${userId}`);
+    return true;
+  } catch (error: any) {
+    console.error('[Database] Reset failed:', error.message);
+    return false;
   }
 }

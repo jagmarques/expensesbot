@@ -1,13 +1,17 @@
-export interface GeminiRequest {
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AIRequest {
   systemPrompt: string;
   userMessage: string;
   context?: string;
+  history?: ChatMessage[];
 }
 
-export interface GeminiResponse {
+export interface AIResponse {
   text: string;
-  tokenCount?: number;
-  finishReason?: string;
 }
 
 export interface RateLimitStatus {

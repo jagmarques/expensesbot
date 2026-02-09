@@ -1,3 +1,3 @@
-export { getMonthlyStats, generateReportText } from './reports';
-export { calculateTrend, getAllCategoryInflation, compareStorePrices } from './trends';
-export type { MonthlyStats, CategoryStat, ItemStat, PriceTrend, CategoryInflation, StorePriceComparison } from '../../types/analytics';
+export { getMonthlyStats, generateReportText, getCategoriesWithReceipts, generateCategoryReceiptReport } from './reports';
+export { getAllCategoryInflation } from './trends';
+export type { MonthlyStats, CategoryStat, ItemStat, CategoryInflation } from '../../types/analytics';

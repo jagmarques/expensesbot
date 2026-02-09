@@ -5,11 +5,11 @@
 export const messages = {
   // Success messages
   success: {
-    expenseAdded: (description: string, amount: string) => `✓ Added: ${description}\nAmount: ${amount}`,
-    budgetSet: (category: string, amount: string) => `✓ Budget set for ${category}: ${amount}/month`,
-    recurringAdded: (name: string, amount: string) => `✓ Recurring expense added: ${name}\nAmount: ${amount}`,
-    timezoneSet: (timezone: string) => `✓ Timezone set to ${timezone}`,
-    exported: (format: string) => `✓ Data exported as ${format}`,
+    expenseAdded: (description: string, amount: string) => `Added: ${description}\nAmount: ${amount}`,
+    budgetSet: (category: string, amount: string) => `Budget set for ${category}: ${amount}/month`,
+    recurringAdded: (name: string, amount: string) => `Recurring expense added: ${name}\nAmount: ${amount}`,
+    timezoneSet: (timezone: string) => `Timezone set to ${timezone}`,
+    exported: (format: string) => `Data exported as ${format}`,
   },
 
   // Error messages with recovery suggestions
@@ -21,7 +21,7 @@ export const messages = {
     invalidFrequency: 'Invalid frequency. Options: daily, weekly, biweekly, monthly, quarterly, annual',
     invalidTimezone: 'Invalid timezone. Try: 14:30 (your time) or +5 (UTC offset)',
     invalidDate: 'Invalid date format. Use: YYYY-MM-DD',
-    noData: 'No expenses recorded yet. Start by:\n- Type "20 coffee" for quick entry\n- Send a receipt photo\n- Ask "How much on food?"',
+    noData: 'No expenses recorded yet.\n\nSend a receipt photo or type an expense to add it.',
     noBudgets: 'No budgets set. Create one: /budget set food 500',
     noRecurring: 'No recurring expenses set. Add one: /recurring add netflix 10 monthly',
     queryTooShort: 'Query too short. Ask something specific like "How much on food?"',
@@ -84,10 +84,10 @@ function getCurrencySymbol(currency: string): string {
  */
 export function getSuggestion(context: string): string {
   const suggestions: Record<string, string> = {
-    noExpenses: '💡 Start tracking: type "20 coffee" or send a receipt photo',
-    lowBudget: '💡 You\'re close to your budget limit. Check: /budget list',
-    highSpend: '💡 You\'re spending more than expected. Ask: "Where is my money going?"',
-    firstTime: '💡 Welcome! Try: /start to see all features',
+    noExpenses: 'Send a receipt photo or type an expense to add it.',
+    lowBudget: 'You\'re close to your budget limit. Check: /budget list',
+    highSpend: 'You\'re spending more than expected. Ask: "Where is my money going?"',
+    firstTime: 'Welcome! Try: /start to see all features',
   };
   return suggestions[context] || '';
 }
